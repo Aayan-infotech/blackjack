@@ -1,83 +1,109 @@
+const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
-const Role = require('../models/roleModel');
-const createError = require('../middleware/error')
-const createSuccess = require('../middleware/success')
-//to Create user 
-const register = async (req, res, next) => {
-    try {
-      const role = await Role.find({ role: 'User' });
-      const newUser = new User({
-        firstName: req.body.firstName,
-        lastName: req.body.lastName,
-        username: req.body.username,
-        email: req.body.email,
-        password: req.body.password,
-        mobileNumber: req.body.mobileNumber,
-        jobTitle:req.body.jobTitle,
-        roles: role
-      })
-      await newUser.save();
-     // return res.status(200).json("User Registered Successfully")
-     return next(createSuccess(200, "User Registered Successfully"))
+const bcrypt = require('bcryptjs');
+
+exports.getProfile = async (req, res) => {
+  try {
+    // Get the token from the request headers
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
     }
-    catch (error) {
-      //return res.status(500).send("Something went wrong")
-      return next(createError(500, "Something went wrong"))
+
+    // Verify and decode the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Find the user by the ID from the token
+    const user = await User.findById(decoded.userId).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    // Return the user details
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        mobile: user.mobile,
+        createdAt: user.createdAt,
+      }
+    });
+
+  } catch (error) {
+    // Handle token verification errors or database errors
+    res.status(500).json({ success: false, message: 'Error fetching profile', error: error.message });
   }
-//get users
-const getAllUsers = async (req, res, next) => {
+};
+
+  
+  // Edit Profile
+  exports.editProfile = async (req, res) => {
+    const { name, mobileNo, email } = req.body;
     try {
-        const users = await User.find();
-        return next(createSuccess(200, "All Users", users));
-
+      const user = await User.findById(req.user._id);
+      if (user) {
+        user.name = name || user.name;
+        user.mobileNo = mobileNo || user.mobileNo;
+        user.email = email || user.email;
+        await user.save();
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ success: false, message: 'User not found' });
+      }
     } catch (error) {
-        return next(createError(500, "Internal Server Error!"))
+      res.status(500).json({ success: false, error: error.message });
     }
-}
-//get user
-const getUser = async (req, res, next) => {
+  };
+  
+
+  
+  exports.changePassword = async (req, res) => {
+    const { newPassword } = req.body;
+  
     try {
-        const user = await User.findById(req.params.id);
-        if (!user) {
-            return next(createError(404, "User Not Found"));
-        }
-        return next(createSuccess(200, "Single User",user));
+      // Extract token from headers
+      const token = req.headers.authorization?.split(' ')[1];
+  
+      if (!token) {
+        return res.status(401).json({ success: false, message: 'No token provided' });
+      }
+  
+      // Verify and decode the token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  
+      // Find user by decoded ID
+      const user = await User.findById(decoded.userId);
+  
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+  
+      // Hash the new password before saving it
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+  
+      // Update the user's password
+      user.password = hashedPassword;
+      await user.save();
+  
+      res.json({ success: true, message: 'Password updated successfully' });
+  
     } catch (error) {
-        return next(createError(500, "Internal Server Error1"))
+      res.status(500).json({ success: false, message: 'Error changing password', error: error.message });
     }
-}
-
-//update user
-const updateUser = async (req, res, next) => {
+  };
+  
+  // Delete Account
+  exports.deleteAccount = async (req, res) => {
     try {
-        const {id} = req.params;
-        const user = await User.findByIdAndUpdate(id, req.body);
-        if (!user) {
-            return next(createError(404, "User Not Found"));
-        }
-        return next(createSuccess(200, "User Details Updated",user));
+      await User.findByIdAndDelete(req.user._id);
+      res.json({ success: true });
     } catch (error) {
-        return next(createError(500, "Internal Server Error1"))
+      res.status(500).json({ success: false, error: error.message });
     }
-}
-
-
-//delete user
-const deleteUser = async (req, res, next) => {
-    try {
-        const {id} = req.params;
-        const user = await User.findByIdAndDelete(id);
-        if (!user) {
-            return next(createError(404, "User Not Found"));
-        }
-        return next(createSuccess(200, "User Deleted",user));
-    } catch (error) {
-        return next(createError(500, "Internal Server Error1"))
-    }
-} 
-
-
-module.exports = {
-    getAllUsers, getUser,deleteUser,updateUser ,register
-}
+  };
+  

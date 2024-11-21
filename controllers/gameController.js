@@ -1,39 +1,48 @@
+const Game = require('../models/gameModel');
+const jwt = require('jsonwebtoken');
 
-const Startgame = require('../models/startGameModel');
+// Create Private Game
+exports.createPrivateGame = async (req, res) => {
+    try {
+        const { gameDetails } = req.body;
 
-const createError = require('../middleware/error')
-const createSuccess = require('../middleware/success')
-//to Create user 
-const createGame = async (req, res,next) => {
-  try {
-  
-      const newGame = new Startgame({
-        game_code:req.body.game_code,
-        game_type:req.body.game_type,
-        max_player:req.body.max_player,
-        bet_amount:req.body.bet_amount,
-        pot_price:req.body.pot_price,
-        players:req.body.players
-      })
-      await newGame.save();
-      return next(createSuccess(200,"Start Game"))
-  } catch (error) {
-      return next(createError(500, "Something went wrong"));
-  }
+        // Check if user ID is present
+        console.log('User ID from token:', req.user._id); // Log this to check if the user ID is being extracted properly
+
+        const userId = req.user._id;
+
+        // Generate a random 10-digit game code
+        const gameCode = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+
+        // Create a new game
+        const game = new Game({
+            gameDetails,
+            gameCode,
+            createdBy: userId // Use the user ID extracted from the token
+        });
+
+        await game.save();
+
+        return res.status(201).json({ success: true, message: 'Game created successfully', gameCode });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Failed to create game', error: error.message });
+    }
 };
 
-const getAllGames = async (req, res,next) => {
-  try {
-      const StartedGames = await Startgame.find();
-      return next(createSuccess(200, "Started Games", StartedGames))
-  } catch (error) {
-      return next(createError(500, "Something went wrong"));
-  }
+// Get Private Game by Game Code
+exports.getPrivateGame = async (req, res) => {
+    try {
+        const { gameCode } = req.params;
+
+        const game = await Game.findOne({ gameCode });
+
+        if (!game) {
+            return res.status(404).json({ success: false, message: 'Game not found' });
+        }
+
+        // Return the game details
+        return res.status(200).json({ success: true, gameDetails: game.gameDetails });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Failed to retrieve game', error: error.message });
+    }
 };
-
-
-
-
-module.exports = {
-    createGame,getAllGames
-}
